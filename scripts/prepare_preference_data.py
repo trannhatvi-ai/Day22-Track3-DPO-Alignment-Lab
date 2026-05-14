@@ -19,6 +19,17 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 
 REPO = Path(__file__).resolve().parent.parent
+QWEN_CHAT_TEMPLATE = """{% for message in messages %}<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant
+{% endif %}"""
+
+
+def ensure_qwen_chat_template(tokenizer):
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = QWEN_CHAT_TEMPLATE
+        print("Set tokenizer.chat_template = Qwen ChatML fallback")
+    return tokenizer
 
 
 def main():
@@ -51,6 +62,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    ensure_qwen_chat_template(tokenizer)
 
     def fmt(row):
         prompt_msgs = [{"role": "user", "content": row["prompt"]}]

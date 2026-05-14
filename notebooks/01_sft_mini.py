@@ -112,6 +112,21 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
     print("Set tokenizer.pad_token = eos_token")
 
+QWEN_CHAT_TEMPLATE = """{% for message in messages %}<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant
+{% endif %}"""
+
+
+def ensure_qwen_chat_template(tokenizer):
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = QWEN_CHAT_TEMPLATE
+        print("Set tokenizer.chat_template = Qwen ChatML fallback")
+    return tokenizer
+
+
+ensure_qwen_chat_template(tokenizer)
+
 # %%
 model = FastLanguageModel.get_peft_model(
     model,
@@ -144,7 +159,7 @@ print(f"Loaded {len(ds)} rows. Columns: {ds.column_names}")
 print(f"\nFirst row:\n{ds[0]}")
 
 # %%
-# Alpaca → ChatML format (Qwen2.5's native template)
+# Alpaca -> ChatML format (Qwen2.5's native template)
 def first_text(row, *keys):
     for key in keys:
         value = row.get(key)
@@ -173,6 +188,7 @@ def format_alpaca_to_chat(row):
     return {"text": text}
 
 
+ensure_qwen_chat_template(tokenizer)
 ds_formatted = ds.map(format_alpaca_to_chat, remove_columns=ds.column_names)
 print(f"\nSample formatted text (first 500 chars):\n{ds_formatted[0]['text'][:500]}")
 
@@ -242,6 +258,7 @@ print(f"Saved SFT adapter to {ADAPTER_OUT}")
 FastLanguageModel.for_inference(model)
 prompt = "Giải thích ngắn gọn (3-4 câu) thuật toán quicksort hoạt động thế nào."
 messages = [{"role": "user", "content": prompt}]
+ensure_qwen_chat_template(tokenizer)
 inputs = tokenizer.apply_chat_template(
     messages, return_tensors="pt", add_generation_prompt=True
 ).to("cuda")

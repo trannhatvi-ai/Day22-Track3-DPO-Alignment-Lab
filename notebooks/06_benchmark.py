@@ -59,6 +59,18 @@ print(f"MMLU:            {LIMIT_MMLU} questions")
 print(f"AlpacaEval-lite: {LIMIT_ALPACA} prompts")
 print(f"output:          {EVAL_OUT}")
 
+QWEN_CHAT_TEMPLATE = """{% for message in messages %}<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant
+{% endif %}"""
+
+
+def ensure_qwen_chat_template(tokenizer):
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = QWEN_CHAT_TEMPLATE
+        print("Set tokenizer.chat_template = Qwen ChatML fallback")
+    return tokenizer
+
 # %%
 import torch
 
@@ -193,6 +205,7 @@ def generate_with_adapter(adapter_path, prompts, max_new_tokens=256):
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    ensure_qwen_chat_template(tokenizer)
     model = PeftModel.from_pretrained(model, str(adapter_path))
     FastLanguageModel.for_inference(model)
 

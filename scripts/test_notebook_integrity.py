@@ -14,6 +14,23 @@ class NotebookIntegrityTests(unittest.TestCase):
         self.assertIn("5CD-AI/Vietnamese-alpaca-gpt4-gg-translated", source)
         self.assertIn("instruction_vi", source)
         self.assertIn("output_vi", source)
+        self.assertIn("ensure_qwen_chat_template(tokenizer)", source)
+
+    def test_all_chat_template_call_sites_have_qwen_fallback(self):
+        paths = [
+            "notebooks/01_sft_mini.py",
+            "notebooks/02_preference_data.py",
+            "notebooks/04_compare_and_eval.py",
+            "notebooks/06_benchmark.py",
+            "scripts/prepare_preference_data.py",
+            "colab/Lab22_DPO_T4.ipynb",
+            "colab/Lab22_DPO_BigGPU.ipynb",
+        ]
+        for rel_path in paths:
+            source = (ROOT / rel_path).read_text(encoding="utf-8")
+            self.assertIn("apply_chat_template", source)
+            self.assertIn("QWEN_CHAT_TEMPLATE", source, f"{rel_path} should define a fallback ChatML template")
+            self.assertIn("ensure_qwen_chat_template(tokenizer)", source, f"{rel_path} should set tokenizer.chat_template")
 
     def test_colab_install_cells_quote_version_constraints(self):
         expected_specs = [

@@ -62,6 +62,21 @@ assert ADAPTER_DIR.exists(), f"NB1 must run first — {ADAPTER_DIR} missing"
 tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
+
+QWEN_CHAT_TEMPLATE = """{% for message in messages %}<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant
+{% endif %}"""
+
+
+def ensure_qwen_chat_template(tokenizer):
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = QWEN_CHAT_TEMPLATE
+        print("Set tokenizer.chat_template = Qwen ChatML fallback")
+    return tokenizer
+
+
+ensure_qwen_chat_template(tokenizer)
 print(f"Tokenizer: {tokenizer.__class__.__name__}  vocab={tokenizer.vocab_size:,}")
 
 # %% [markdown]
@@ -104,6 +119,7 @@ def format_pref(row):
     }
 
 
+ensure_qwen_chat_template(tokenizer)
 pref = ds.map(format_pref, remove_columns=ds.column_names)
 print(f"Formatted: {len(pref)} pairs · cols: {pref.column_names}")
 

@@ -68,6 +68,18 @@ from unsloth import FastLanguageModel
 from peft import PeftModel
 import gc
 
+QWEN_CHAT_TEMPLATE = """{% for message in messages %}<|im_start|>{{ message['role'] }}
+{{ message['content'] }}<|im_end|>
+{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant
+{% endif %}"""
+
+
+def ensure_qwen_chat_template(tokenizer):
+    if not getattr(tokenizer, "chat_template", None):
+        tokenizer.chat_template = QWEN_CHAT_TEMPLATE
+        print("Set tokenizer.chat_template = Qwen ChatML fallback")
+    return tokenizer
+
 
 def generate_with_adapter(adapter_path: Path, prompts: list[dict], max_new_tokens: int = 256):
     """Load base + adapter, generate for all prompts, free memory, return outputs."""
@@ -79,6 +91,7 @@ def generate_with_adapter(adapter_path: Path, prompts: list[dict], max_new_token
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    ensure_qwen_chat_template(tokenizer)
 
     model = PeftModel.from_pretrained(model, str(adapter_path))
     FastLanguageModel.for_inference(model)
