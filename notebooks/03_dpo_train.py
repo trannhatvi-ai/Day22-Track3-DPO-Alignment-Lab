@@ -78,6 +78,31 @@ assert torch.cuda.is_available(), "DPO needs a CUDA GPU. See HARDWARE-GUIDE.md."
 from unsloth import FastLanguageModel
 from peft import PeftModel
 
+
+def force_eager_attention(model):
+    """Avoid xformers backward kernels that are unsupported on T4 / sm_75."""
+    seen = set()
+    candidates = (
+        model,
+        getattr(model, "base_model", None),
+        getattr(getattr(model, "base_model", None), "model", None),
+        getattr(model, "model", None),
+    )
+    for obj in candidates:
+        if obj is None or id(obj) in seen:
+            continue
+        seen.add(id(obj))
+        if hasattr(obj, "set_attention_implementation"):
+            try:
+                obj.set_attention_implementation("eager")
+            except Exception as exc:
+                print(f"set_attention_implementation skipped: {exc}")
+        if hasattr(obj, "config"):
+            obj.config._attn_implementation = "eager"
+            obj.config.use_cache = False
+    return model
+
+
 # Policy starts from the SFT LoRA adapter. DPO continues training those adapter
 # weights while TRL uses the adapter-disabled base as the implicit reference.
 model, tokenizer = FastLanguageModel.from_pretrained(
@@ -91,6 +116,7 @@ if tokenizer.pad_token is None:
 
 # Load SFT adapter on top of base and keep it trainable for DPO.
 model = PeftModel.from_pretrained(model, str(SFT_PATH), is_trainable=True)
+model = force_eager_attention(model)
 print(f"Policy: {model.__class__.__name__} with SFT adapter loaded")
 
 print(f"Trainable params (DPO-updated SFT LoRA): {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")

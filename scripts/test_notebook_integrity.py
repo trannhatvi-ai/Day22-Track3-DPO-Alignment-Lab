@@ -72,6 +72,20 @@ class NotebookIntegrityTests(unittest.TestCase):
             self.assertNotIn("REPO_ROOT", probe_cells[0])
             self.assertNotIn("BASE_MODEL", probe_cells[0])
 
+    def test_colab_sft_model_load_defines_chat_template_before_use(self):
+        for rel_path in ["colab/Lab22_DPO_T4.ipynb", "colab/Lab22_DPO_BigGPU.ipynb"]:
+            nb = json.loads((ROOT / rel_path).read_text(encoding="utf-8"))
+            model_load_cells = [
+                "".join(cell.get("source", []))
+                for cell in nb["cells"]
+                if "FastLanguageModel.from_pretrained" in "".join(cell.get("source", []))
+                and "Qwen tokenizers ship without pad token" in "".join(cell.get("source", []))
+            ]
+            self.assertEqual(len(model_load_cells), 1, f"{rel_path} should have one SFT model-load cell")
+            source = model_load_cells[0]
+            self.assertLess(source.index("QWEN_CHAT_TEMPLATE"), source.index("ensure_qwen_chat_template(tokenizer)"))
+            self.assertNotIn('ensure_qwen_chat_template(tokenizer)\n    print("Set tokenizer.pad_token', source)
+
     def test_notebooks_auto_write_required_screenshots(self):
         expected = {
             "notebooks/01_sft_mini.py": ["01-setup-gpu.png", "02-sft-loss.png"],
@@ -130,6 +144,25 @@ class NotebookIntegrityTests(unittest.TestCase):
                 source = source.split("Stage from `notebooks/06_benchmark.py`", 1)[0]
             self.assertIn("PeftModel.from_pretrained(model, str(DPO_PATH))", source)
             self.assertNotIn("PeftModel.from_pretrained(model, str(SFT_PATH))", source)
+
+    def test_dpo_training_forces_eager_attention_for_t4_xformers_compatibility(self):
+        for rel_path in [
+            "notebooks/03_dpo_train.py",
+            "scripts/train_dpo.py",
+            "colab/Lab22_DPO_T4.ipynb",
+            "colab/Lab22_DPO_BigGPU.ipynb",
+        ]:
+            path = ROOT / rel_path
+            if path.suffix == ".ipynb":
+                nb = json.loads(path.read_text(encoding="utf-8"))
+                source = "\n".join(
+                    "".join(cell.get("source", [])) for cell in nb["cells"]
+                )
+            else:
+                source = path.read_text(encoding="utf-8")
+            self.assertIn("force_eager_attention", source)
+            self.assertIn('_attn_implementation = "eager"', source)
+            self.assertIn("force_eager_attention(model)", source)
 
     def test_verify_stdout_is_utf8_safe_on_windows(self):
         source = (ROOT / "scripts" / "verify.py").read_text(encoding="utf-8")

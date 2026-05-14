@@ -19,6 +19,30 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
+def force_eager_attention(model):
+    """Avoid xformers backward kernels that are unsupported on T4 / sm_75."""
+    seen = set()
+    candidates = (
+        model,
+        getattr(model, "base_model", None),
+        getattr(getattr(model, "base_model", None), "model", None),
+        getattr(model, "model", None),
+    )
+    for obj in candidates:
+        if obj is None or id(obj) in seen:
+            continue
+        seen.add(id(obj))
+        if hasattr(obj, "set_attention_implementation"):
+            try:
+                obj.set_attention_implementation("eager")
+            except Exception as exc:
+                print(f"set_attention_implementation skipped: {exc}")
+        if hasattr(obj, "config"):
+            obj.config._attn_implementation = "eager"
+            obj.config.use_cache = False
+    return model
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--beta", type=float, default=0.1)
@@ -60,6 +84,7 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
 
     model = PeftModel.from_pretrained(model, args.sft_path, is_trainable=True)
+    model = force_eager_attention(model)
 
     config = DPOConfig(
         output_dir=str(output.parent / f"{output.name}-checkpoints"),
