@@ -41,7 +41,7 @@ else:  # BIGGPU
     PER_DEVICE_BATCH = 2
     GRAD_ACCUM = 4
 
-SFT_DATASET = os.environ.get("SFT_DATASET", "5CD-AI/Vietnamese-alpaca-cleaned")
+SFT_DATASET = os.environ.get("SFT_DATASET", "5CD-AI/Vietnamese-alpaca-gpt4-gg-translated")
 SFT_SLICE = 1000
 NUM_EPOCHS = 1
 
@@ -62,6 +62,33 @@ import torch
 assert torch.cuda.is_available(), "DPO needs a CUDA GPU. See HARDWARE-GUIDE.md."
 gpu = torch.cuda.get_device_properties(0)
 print(f"GPU: {gpu.name}  ({gpu.total_memory / 1e9:.1f} GB)")
+
+import matplotlib.pyplot as plt
+
+screenshot_dir = REPO_ROOT / "submission" / "screenshots"
+screenshot_dir.mkdir(parents=True, exist_ok=True)
+fig, ax = plt.subplots(figsize=(8, 3.2))
+ax.axis("off")
+ax.text(
+    0.02,
+    0.95,
+    "\n".join(
+        [
+            "Lab 22 setup / GPU evidence",
+            f"COMPUTE_TIER: {COMPUTE_TIER}",
+            f"GPU: {gpu.name}",
+            f"VRAM: {gpu.total_memory / 1e9:.1f} GB",
+            f"Base model: {BASE_MODEL}",
+            f"SFT dataset: {SFT_DATASET}",
+        ]
+    ),
+    va="top",
+    family="monospace",
+    fontsize=11,
+)
+fig.tight_layout()
+fig.savefig(screenshot_dir / "01-setup-gpu.png", dpi=120, bbox_inches="tight")
+plt.show()
 
 # %% [markdown]
 # ## 1. Load base model with Unsloth
@@ -106,7 +133,7 @@ print(f"Trainable params: {sum(p.numel() for p in model.parameters() if p.requir
 # %% [markdown]
 # ## 2. Load + format VN Alpaca slice
 #
-# `5CD-AI/Vietnamese-alpaca-cleaned` is a 50k-row VN Alpaca translation. Lab 21
+# `5CD-AI/Vietnamese-alpaca-gpt4-gg-translated` is a 52k-row VN Alpaca translation. Lab 21
 # uses 1k slice for the demo run; we match that exactly so reward gap is comparable.
 
 # %%
@@ -118,15 +145,30 @@ print(f"\nFirst row:\n{ds[0]}")
 
 # %%
 # Alpaca → ChatML format (Qwen2.5's native template)
+def first_text(row, *keys):
+    for key in keys:
+        value = row.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 def format_alpaca_to_chat(row):
+    instruction = first_text(row, "instruction", "instruction_vi", "instruction_en", "prompt")
+    input_text = first_text(row, "input", "input_vi", "input_en")
+    output = first_text(row, "output", "output_vi", "output_en", "response")
+
+    if not instruction and input_text:
+        instruction, input_text = input_text, ""
+
     messages = []
-    if row.get("instruction"):
-        prompt = row["instruction"]
-        if row.get("input"):
-            prompt += "\n\n" + row["input"]
+    if instruction:
+        prompt = instruction
+        if input_text:
+            prompt += "\n\n" + input_text
         messages.append({"role": "user", "content": prompt})
-    if row.get("output"):
-        messages.append({"role": "assistant", "content": row["output"]})
+    if output:
+        messages.append({"role": "assistant", "content": output})
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
     return {"text": text}
 
@@ -161,7 +203,7 @@ sft_config = SFTConfig(
 
 trainer = SFTTrainer(
     model=model,
-    tokenizer=tokenizer,
+    processing_class=tokenizer,
     args=sft_config,
     train_dataset=ds_formatted,
 )
@@ -174,8 +216,6 @@ print(f"\nFinal train loss: {train_result.training_loss:.4f}")
 # ### 3a. Plot loss curve (deliverable: `02_sft_loss.png`)
 
 # %%
-import matplotlib.pyplot as plt
-
 losses = [log["loss"] for log in trainer.state.log_history if "loss" in log]
 steps = [log["step"] for log in trainer.state.log_history if "loss" in log]
 
@@ -186,8 +226,6 @@ ax.set_ylabel("Loss")
 ax.set_title(f"SFT-mini loss · {COMPUTE_TIER} · {BASE_MODEL.split('/')[-1]} · {SFT_SLICE} samples")
 ax.grid(True, alpha=0.3)
 fig.tight_layout()
-screenshot_dir = REPO_ROOT / "submission" / "screenshots"
-screenshot_dir.mkdir(parents=True, exist_ok=True)
 fig.savefig(screenshot_dir / "02-sft-loss.png", dpi=120)
 plt.show()
 

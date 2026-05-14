@@ -303,6 +303,39 @@ if judge_results is None:
     json.dumps(judge_results, ensure_ascii=False, indent=2)
 )
 
+fig, ax = plt.subplots(figsize=(12, 0.55 * len(judge_results) + 1.8))
+ax.axis("off")
+judge_table = [["#", "Category", "Winner", "Justification"]]
+for row in judge_results:
+    winner = row.get("winner", "tie")
+    if winner == "A":
+        winner_label = "SFT-only"
+    elif winner == "B":
+        winner_label = "SFT+DPO"
+    else:
+        winner_label = "tie/manual"
+    judge_table.append([
+        row["id"],
+        row["category"],
+        winner_label,
+        textwrap.shorten(row.get("justification", ""), 90),
+    ])
+
+table = ax.table(
+    cellText=judge_table,
+    loc="center",
+    cellLoc="left",
+    colWidths=[0.05, 0.15, 0.18, 0.62],
+)
+table.auto_set_font_size(False)
+table.set_fontsize(8.5)
+table.scale(1.0, 1.45)
+for j in range(len(judge_table[0])):
+    table[(0, j)].set_facecolor("#2e548a")
+    table[(0, j)].set_text_props(color="white", weight="bold")
+fig.savefig(screenshot_dir / "05-manual-rubric.png", dpi=120, bbox_inches="tight")
+plt.show()
+
 # %% [markdown]
 # ## 6. Win/loss/tie summary
 

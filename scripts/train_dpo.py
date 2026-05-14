@@ -60,13 +60,6 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
 
     model = PeftModel.from_pretrained(model, args.sft_path, is_trainable=True)
-    model = FastLanguageModel.get_peft_model(
-        model, r=16, lora_alpha=32, lora_dropout=0.0, bias="none",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj"],
-        use_gradient_checkpointing="unsloth",
-        random_state=42, use_rslora=False, loftq_config=None,
-    )
 
     config = DPOConfig(
         output_dir=str(output.parent / f"{output.name}-checkpoints"),
@@ -92,7 +85,7 @@ def main():
     pref = Dataset.from_parquet(args.pref_path)
     trainer = DPOTrainer(
         model=model, ref_model=None, args=config,
-        train_dataset=pref, tokenizer=tokenizer,
+        train_dataset=pref, processing_class=tokenizer,
     )
     train_result = trainer.train()
 

@@ -65,15 +65,14 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-# Stack SFT-mini → DPO adapters
-SFT_PATH = REPO_ROOT / "adapters" / "sft-mini"
-model = PeftModel.from_pretrained(model, str(SFT_PATH))
-print(f"Loaded SFT-mini adapter from {SFT_PATH}")
+# DPO adapter is the SFT adapter after preference optimization.
+model = PeftModel.from_pretrained(model, str(DPO_PATH))
+print(f"Loaded DPO adapter from {DPO_PATH}")
 
 # %% [markdown]
-# > **Note:** The DPO adapter trained in NB3 stacks on top of SFT. To get a fully
-# > aligned merged model, we apply both adapters before merging. Unsloth's
-# > `save_pretrained_merged` handles the SFT + DPO + base merge in one shot.
+# > **Note:** NB3 continues training the SFT LoRA adapter with DPO and saves that
+# > updated adapter to `adapters/dpo`. For deployment we load base + DPO directly,
+# > then merge into full precision before GGUF conversion.
 
 # %% [markdown]
 # ## 2. Save merged FP16 weights
@@ -83,7 +82,7 @@ print(f"Loaded SFT-mini adapter from {SFT_PATH}")
 # converter in step 3.
 
 # %%
-# This re-loads the model with both SFT and DPO adapters merged into base weights.
+# This merges the DPO-updated adapter into base weights.
 # Output is FP16 (or BF16 on Ampere+) HF-format weights ready for inference.
 model.save_pretrained_merged(
     str(MERGED_PATH),
@@ -186,6 +185,30 @@ response = llm.create_chat_completion(
 print(f"PROMPT:\n  {SMOKE_PROMPT}\n")
 print(f"RESPONSE (Q4_K_M GGUF, llama-cpp-python):\n  {response['choices'][0]['message']['content']}")
 print(f"\nTokens used: {response['usage']}")
+
+import matplotlib.pyplot as plt
+import textwrap
+
+screenshot_dir = REPO_ROOT / "submission" / "screenshots"
+screenshot_dir.mkdir(parents=True, exist_ok=True)
+smoke_text = "\n".join(
+    [
+        "GGUF smoke test",
+        f"File: {gguf_path.name}",
+        f"Prompt: {SMOKE_PROMPT}",
+        "",
+        "Response:",
+        textwrap.fill(response["choices"][0]["message"]["content"], width=95),
+        "",
+        f"Tokens: {response['usage']}",
+    ]
+)
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.axis("off")
+ax.text(0.02, 0.98, smoke_text, va="top", family="monospace", fontsize=9)
+fig.tight_layout()
+fig.savefig(screenshot_dir / "06-gguf-smoke.png", dpi=120, bbox_inches="tight")
+plt.show()
 
 # %% [markdown]
 # ## 5. Optional — vLLM serving (BigGPU only)
