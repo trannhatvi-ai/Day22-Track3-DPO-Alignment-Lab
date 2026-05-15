@@ -91,10 +91,11 @@ model.save_pretrained_merged(
 )
 print(f"Saved merged FP16 to {MERGED_PATH}")
 
-# Free GPU memory before GGUF conversion (which spawns a subprocess that needs RAM)
+# Keep the live DPO+LoRA model handle for GGUF export. Reloading MERGED_PATH
+# through FastLanguageModel can re-enter bitsandbytes/PEFT 4-bit wrappers on
+# some Unsloth releases and fail before quantization starts.
 import gc
 
-del model
 gc.collect()
 torch.cuda.empty_cache()
 
@@ -106,15 +107,8 @@ torch.cuda.empty_cache()
 # llama.cpp (~3 min) then quantizes (~30 s).
 
 # %%
-# Reload the merged model — Unsloth's GGUF saver expects a live model handle.
-from unsloth import FastLanguageModel as FLM
-
-model, tokenizer = FLM.from_pretrained(
-    model_name=str(MERGED_PATH),
-    max_seq_length=MAX_LEN,
-    dtype=None,
-    load_in_4bit=False,    # already merged; load full precision
-)
+# Use the still-live DPO model from step 1. Unsloth will merge the LoRA weights
+# internally before writing GGUF, avoiding a fragile reload of MERGED_PATH.
 
 # %%
 # Save GGUF in 1 quantization tier (Q4_K_M). Add more tiers below if you want the
@@ -123,6 +117,7 @@ model.save_pretrained_gguf(
     str(GGUF_DIR),
     tokenizer,
     quantization_method="q4_k_m",
+    maximum_memory_usage=0.5,
 )
 print(f"Saved GGUF Q4_K_M to {GGUF_DIR}")
 

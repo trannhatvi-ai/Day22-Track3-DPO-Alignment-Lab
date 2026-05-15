@@ -110,6 +110,7 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     max_seq_length=MAX_LEN,
     dtype=None,
     load_in_4bit=True,
+    attn_implementation="eager",
 )
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token

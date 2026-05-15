@@ -162,6 +162,7 @@ class NotebookIntegrityTests(unittest.TestCase):
                 source = path.read_text(encoding="utf-8")
             self.assertIn("force_eager_attention", source)
             self.assertIn('_attn_implementation = "eager"', source)
+            self.assertIn('attn_implementation="eager"', source)
             self.assertIn("force_eager_attention(model)", source)
 
     def test_verify_stdout_is_utf8_safe_on_windows(self):
